@@ -197,6 +197,7 @@ Library
                       Clash.Normalize.Types
                       Clash.Normalize.Util
 
+                      Clash.Primitives.Scaffold
                       Clash.Primitives.Types
                       Clash.Primitives.Util
 

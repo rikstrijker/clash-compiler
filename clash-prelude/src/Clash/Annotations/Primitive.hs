@@ -11,12 +11,13 @@ templates.
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveLift            #-}
 {-# LANGUAGE DeriveTraversable     #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 
-{-# LANGUAGE Safe #-}
+{-# LANGUAGE Trustworthy #-}
 
 {-# OPTIONS_HADDOCK show-extensions #-}
 
@@ -36,6 +37,7 @@ import           Data.Binary                              (Binary)
 import           Data.Data
 import           Data.Hashable                            (Hashable)
 import           GHC.Generics                             (Generic)
+import           Language.Haskell.TH.Lift                 (Lift)
 
 
 -- The commented code directly below this comment is affected by an old
@@ -154,7 +156,7 @@ data HDL
   = SystemVerilog
   | Verilog
   | VHDL
-  deriving (Eq, Show, Read, Data, Generic, NFData, Hashable)
+  deriving (Eq, Show, Read, Data, Generic, NFData, Hashable, Lift)
 
 -- | The 'Primitive' constructor instructs the clash compiler to look for primitive
 -- HDL templates in the indicated directory. 'InlinePrimitive' is equivalent but
