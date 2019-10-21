@@ -35,12 +35,21 @@ import Control.Lens.Internal.TH (bndrName,conAppsT,unfoldType)
 
 
 class (NFDataX a) => AutoReg a where
-  autoReg
+  autoReg'
     :: KnownDomain dom
-    => Clock dom -> Reset dom -> Enable dom
+    => Bool
+    -> Clock dom -> Reset dom -> Enable dom
     -> a -- ^ Reset value
     -> Signal dom a -> Signal dom a
-  autoReg = register
+  autoReg' = const register
+
+autoReg,autoReg1
+  :: (KnownDomain dom, AutoReg a)
+  => Clock dom -> Reset dom -> Enable dom
+  -> a -- ^ Reset value
+  -> Signal dom a -> Signal dom a
+autoReg = autoReg' True
+autoReg1 = autoReg' False
 
 instance AutoReg ()
 instance AutoReg Bool
@@ -72,7 +81,7 @@ instance AutoReg (Index n)
 instance NFDataX (rep (int + frac)) => AutoReg (Fixed rep int frac)
 
 instance AutoReg a => AutoReg (Maybe a) where
-  autoReg clk rst en initVal input =
+  autoReg' autoDeep clk rst en initVal input =
     let
         tag = isJust <$> input
         tagInit = isJust initVal
@@ -81,7 +90,9 @@ instance AutoReg a => AutoReg (Maybe a) where
         val = fromMaybe (deepErrorX "undefined") <$> input
         valInit = fromMaybe (deepErrorX "undefined") initVal
 
-        valR = autoReg clk rst (toEnable (fromEnable en .&&. tag)) valInit val
+        reg | autoDeep  = autoReg
+            | otherwise = register
+        valR = reg clk rst (toEnable (fromEnable en .&&. tag)) valInit val
 
         createMaybe t v = case t of
           True -> Just v
@@ -90,19 +101,25 @@ instance AutoReg a => AutoReg (Maybe a) where
     in createMaybe <$> tagR <*> valR
 
 instance (KnownNat n, AutoReg a) => AutoReg (Vec n a) where
-  autoReg :: forall dom. KnownDomain dom
-          => Clock dom -> Reset dom -> Enable dom
+  autoReg' :: forall dom. KnownDomain dom
+          => Bool
+          -> Clock dom -> Reset dom -> Enable dom
           -> Vec n a -- ^ Reset value
           -> Signal dom (Vec n a) -> Signal dom (Vec n a)
-  autoReg clk rst en initVal xs =
+  autoReg' autoDeep clk rst en initVal xs =
     bundle $ smap go (lazyV initVal) <*> unbundle xs
     where
+      reg | autoDeep  = autoReg
+          | otherwise = register
       go :: forall (i :: Nat). SNat i -> a  -> Signal dom a -> Signal dom a
-      go SNat = suffixNameFromNat @i . autoReg clk rst en
+      go SNat = suffixNameFromNat @i . reg clk rst en
 
 instance (KnownNat d, AutoReg a) => AutoReg (RTree d a) where
-  autoReg clk rst en initVal xs =
-    bundle $ (autoReg clk rst en) <$> lazyT initVal <*> unbundle xs
+  autoReg' autoDeep clk rst en initVal xs =
+    bundle $ (reg clk rst en) <$> lazyT initVal <*> unbundle xs
+    where
+      reg | autoDeep  = autoReg
+          | otherwise = register
 
 
 
@@ -134,16 +151,18 @@ For a type like:
 This generates the following instance:
 
 instance (AutoReg a, AutoReg b, ..) => AutoReg (Product a b ..) where
-  autoReg clk rst en initVal input =
+  autoReg' autoDeep clk rst en initVal input =
     MkProduct <$> sig0 <*> sig1 ...
     where
       field0 = (\(MkProduct x _ ...) -> x) <$> input
       field1 = (\(MkProduct _ x ...) -> x) <$> input
       ...
       MkProduct initVal0 initVal1 ... = initVal
-      sig0 = suffixName @"getA" autoReg clk rst en initVal0 field0
-      sig1 = suffixName @"getB" autoReg clk rst en initVal1 field1
+      sig0 = suffixName @"getA" reg clk rst en initVal0 field0
+      sig1 = suffixName @"getB" reg clk rst en initVal1 field1
       ...
+      reg :: forall dom t. (AutoReg t, KnownDomain dom) -> Clock dom -> ...
+      reg = if autoDeep then autoReg else register
 -}
 deriveAutoRegProduct :: DatatypeInfo -> ConstructorInfo -> DecsQ
 deriveAutoRegProduct tyInfo conInfo = go (constructorName conInfo) fieldInfos
@@ -160,8 +179,11 @@ deriveAutoRegProduct tyInfo conInfo = go (constructorName conInfo) fieldInfos
     go :: Name -> [(Maybe Name,Type)] -> Q [Dec]
     go dcNm fields = do
       let fieldNames = map fst fields
-      args <- mapM newName ["clk","rst","en","initVal","input"]
-      let [clkE,rstE,enE,initValE,inputE] = map varE args
+      args <- mapM newName ["autoDeep", "clk","rst","en","initVal","input"]
+      reg <- newName "reg"
+      let [autoDeepE,clkE,rstE,enE,initValE,inputE] = map varE args
+          regE = varE reg
+          regP = varP reg
       let
         tyVars = map (VarT . bndrName) tyVarBndrs
         ty = conAppsT tyNm tyVars
@@ -185,7 +207,7 @@ deriveAutoRegProduct tyInfo conInfo = go (constructorName conInfo) fieldInfos
       let
         genAutoRegDecl :: PatQ -> ExpQ -> ExpQ -> Maybe Name -> DecsQ
         genAutoRegDecl s v i nameM =
-            [d| $s = $nameMe autoReg $clkE $rstE $enE $i $v |]
+            [d| $s = $nameMe $regE $clkE $rstE $enE $i $v |]
             where
               nameMe = case nameM of
                 Nothing -> [| id |]
@@ -197,15 +219,24 @@ deriveAutoRegProduct tyInfo conInfo = go (constructorName conInfo) fieldInfos
                                                    (varE <$> initVals)
                                                    (fieldNames)
                               )
+      regDecl <- [d| $(regP) = (if $autoDeepE then autoReg else register) |]
+
+      -- Type signature is needed here because MonoLocalBinds is on,
+      -- and we want keep reg polymorphic in `t`.
+      regTyDecl <- sigD reg [t| forall dom t . (KnownDomain dom,AutoReg t)
+                                => Clock dom -> Reset dom -> Enable dom
+                                -> t
+                                -> Signal dom t -> Signal dom t
+                            |]
       let
           decls :: [DecQ]
-          decls = map pure (initDecl : fieldDecls ++ partDecls)
+          decls = map pure (initDecl : fieldDecls ++ partDecls ++ regTyDecl : regDecl)
           tyConE = conE dcNm
           body = case map varE sigs of
                   (sig0:rest) -> foldl (\acc sigN -> [| $acc <*> $sigN |])  [| $tyConE <$> $sig0 |] rest
                   [] -> fail "Can't deriveAutoReg for types with constructors without fields"
 
-      autoRegDec <- funD 'autoReg [clause argsP (normalB body) decls]
+      autoRegDec <- funD 'autoReg' [clause argsP (normalB body) decls]
       ctx <- calculateRequiredContext conInfo
       return [InstanceD Nothing ctx (AppT (ConT ''AutoReg) ty) [autoRegDec]]
 

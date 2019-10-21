@@ -134,7 +134,7 @@ module Clash.Prelude
     -- ** Type classes
     -- *** Clash
   , module Clash.Class.AutoReg
-  , autoReg
+  , autoReg, autoReg1
   , module Clash.Class.BitPack
   , module Clash.Class.Exp
   , module Clash.Class.Num
@@ -267,3 +267,7 @@ windowD = hideClockResetEnable E.windowD
 autoReg :: (HiddenClockResetEnable dom, AutoReg a)
                 => a -> Signal dom a -> Signal dom a
 autoReg = hideClockResetEnable E.autoReg
+
+autoReg1 :: (HiddenClockResetEnable dom, AutoReg a)
+                => a -> Signal dom a -> Signal dom a
+autoReg1 = hideClockResetEnable E.autoReg1
