@@ -105,7 +105,7 @@ import           Clash.Core.Type             (Type, TypeView (..), applyFunTy,
                                               isPolyFunCoreTy, isClassTy,
                                               normalizeType, splitFunForallTy,
                                               splitFunTy,
-                                              tyView, mkPolyFunTy)
+                                              tyView, mkPolyFunTy, coreView)
 import           Clash.Core.TyCon            (TyConMap, tyConDataCons)
 import           Clash.Core.Util
   (isCon, isFun, isLet, isPolyFun, isPrim,
@@ -1368,6 +1368,31 @@ type NormRewriteW = Transform (StateT ([LetBinding],InScopeSet) (RewriteMonad No
 tellBinders :: Monad m => [LetBinding] -> StateT ([LetBinding],InScopeSet) m ()
 tellBinders bs = modify ((bs ++) *** (`extendInScopeSetList` (map fst bs)))
 
+notifyBinders :: Monad m => [LetBinding] -> StateT ([LetBinding],InScopeSet) m ()
+notifyBinders bs = modify (second (`extendInScopeSetList` (map fst bs)))
+
+isSimIOTy
+  :: TyConMap
+  -> Type
+  -> Bool
+isSimIOTy tcm ty = case tyView (coreView tcm ty) of
+  TyConApp tcNm args
+    | nameOcc tcNm == "Clash.Explicit.SimIO.SimIO"
+    -> True
+    | nameOcc tcNm == "GHC.Prim.(#,#)"
+    , [_,_,st,_] <- args
+    -> isStateTokenTy tcm st
+  FunTy _ res -> isSimIOTy tcm res
+  _ -> False
+
+isStateTokenTy
+  :: TyConMap
+  -> Type
+  -> Bool
+isStateTokenTy tcm ty = case tyView (coreView tcm ty) of
+  TyConApp tcNm _ -> nameOcc tcNm == "GHC.Prim.State#"
+  _ -> False
+
 -- | Turn an expression into a modified ANF-form. As opposed to standard ANF,
 -- constants do not become let-bound.
 makeANF :: HasCallStack => NormRewrite
@@ -1392,9 +1417,10 @@ makeANF ctx@(TransformContext is0 _) e0
     --
     -- See also Note [ANF InScopeSet]
     let (is2,e1) = freshenTm is0 e0
-    (e2,(bndrs,_)) <- runStateT (bottomupR collectANF ctx e1) ([],is2)
+    ((e2,(bndrs,_)),Monoid.getAny -> hasChanged) <-
+      listen (runStateT (bottomupR collectANF ctx e1) ([],is2))
     case bndrs of
-      [] -> return e0
+      [] -> if hasChanged then return e2 else return e0
       _  -> do
         let (e3,ticks) = collectTicks e2
             (srcTicks,nmTicks) = partitionTicks ticks
@@ -1444,8 +1470,8 @@ collectANF ctx e@(App appf arg)
     untranslatable <- lift (isUntranslatable False arg)
     let localVar   = isLocalVar arg
     constantNoCR   <- lift (isConstantNotClockReset arg)
-    case (untranslatable,localVar || constantNoCR,arg) of
-      (False,False,_) -> do
+    case (untranslatable,localVar || constantNoCR, isSimBind conVarPrim,arg) of
+      (False,False,False,_) -> do
         tcm <- Lens.view tcCache
         -- See Note [ANF InScopeSet]
         is1   <- Lens.use _2
@@ -1453,24 +1479,30 @@ collectANF ctx e@(App appf arg)
         -- See Note [ANF InScopeSet]
         tellBinders [(argId,arg)]
         return (App appf (Var argId))
-      (True,False,Letrec binds body) -> do
+      (True,False,_,Letrec binds body) -> do
         tellBinders binds
         return (App appf body)
       _ -> return e
+ where
+  isSimBind (Prim nm _) = nm == "Clash.Explicit.SimIO.bindSimIO#"
+  isSimBind _ = False
 
 collectANF _ (Letrec binds body) = do
-  tellBinders binds
+  tcm <- Lens.view tcCache
+  let isSimIO = isSimIOTy tcm (termType tcm body)
   untranslatable <- lift (isUntranslatable False body)
   let localVar = isLocalVar body
-  if localVar || untranslatable
-    then return body
+  if localVar || untranslatable || isSimIO
+    then do
+      tellBinders binds
+      return body
     else do
-      tcm <- Lens.view tcCache
       -- See Note [ANF InScopeSet]
       is1 <- Lens.use _2
       argId <- lift (mkTmBinderFor is1 tcm (mkUnsafeSystemName "result" 0) body)
       -- See Note [ANF InScopeSet]
       tellBinders [(argId,body)]
+      tellBinders binds
       return (Var argId)
 
 -- TODO: The code below special-cases ANF for the ':-' constructor for the
@@ -1496,36 +1528,40 @@ collectANF ctx (Case subj ty alts) = do
     let localVar = isLocalVar subj
     let isConstantSubj = isConstant subj
 
-    subj' <- if localVar || isConstantSubj
-      then return subj
+    (subj',subjBinders) <- if localVar || isConstantSubj
+      then return (subj,[])
       else do
         tcm <- Lens.view tcCache
         -- See Note [ANF InScopeSet]
         is1 <- Lens.use _2
         argId <- lift (mkTmBinderFor is1 tcm (mkDerivedName ctx "case_scrut") subj)
         -- See Note [ANF InScopeSet]
-        tellBinders [(argId,subj)]
-        return (Var argId)
+        notifyBinders [(argId,subj)]
+        return (Var argId,[(argId,subj)])
 
-    alts' <- mapM (doAlt subj') alts
+    tcm <- Lens.view tcCache
+    let isSimIOAlt = isSimIOTy tcm ty
+
+    alts' <- mapM (doAlt isSimIOAlt subj') alts
+    tellBinders subjBinders
 
     case alts' of
       [(DataPat _ [] xs,altExpr)]
-        | xs `localIdsDoNotOccurIn` altExpr
+        | xs `localIdsDoNotOccurIn` altExpr || isSimIOAlt
         -> return altExpr
       _ -> return (Case subj' ty alts')
   where
     doAlt
-      :: Term -> (Pat,Term)
+      :: Bool -> Term -> (Pat,Term)
       -> StateT ([LetBinding],InScopeSet) (RewriteMonad NormalizeState)
                 (Pat,Term)
-    doAlt subj' alt@(DataPat dc exts xs,altExpr) | not (bindsExistentials exts xs) = do
+    doAlt isSimIOAlt subj' alt@(DataPat dc exts xs,altExpr) | not (bindsExistentials exts xs) = do
       let lv = isLocalVar altExpr
       patSels <- Monad.zipWithM (doPatBndr subj' dc) xs [0..]
       let altExprIsConstant = isConstant altExpr
       let usesXs (Var n) = any (== n) xs
           usesXs _       = False
-      if (lv && (not (usesXs altExpr) || length alts == 1)) || altExprIsConstant
+      if or [isSimIOAlt, lv && (not (usesXs altExpr) || length alts == 1), altExprIsConstant]
         then do
           -- See Note [ANF InScopeSet]
           tellBinders patSels
@@ -1536,13 +1572,13 @@ collectANF ctx (Case subj ty alts) = do
           is1 <- Lens.use _2
           altId <- lift (mkTmBinderFor is1 tcm (mkDerivedName ctx "case_alt") altExpr)
           -- See Note [ANF InScopeSet]
-          tellBinders ((altId,altExpr):patSels)
+          tellBinders (patSels ++ [(altId,altExpr)])
           return (DataPat dc exts xs,Var altId)
-    doAlt _ alt@(DataPat {}, _) = return alt
-    doAlt _ alt@(pat,altExpr) = do
+    doAlt _ _ alt@(DataPat {}, _) = return alt
+    doAlt isSimIOAlt _ alt@(pat,altExpr) = do
       let lv = isLocalVar altExpr
       let altExprIsConstant = isConstant altExpr
-      if lv || altExprIsConstant
+      if isSimIOAlt || lv || altExprIsConstant
         then return alt
         else do
           tcm <- Lens.view tcCache
@@ -2236,6 +2272,14 @@ inlineCleanup (TransformContext is0 _) (Letrec binds body) = do
           _ -> False
       | id_ `notElemVarSet` bodyFVs
       = case tm of
+          Prim nm _
+            | nm `elem` [ "Clash.Explicit.SimIO.openFile"
+                        , "Clash.Explicit.SimIO.fgetc"
+                        , "Clash.Explicit.SimIO.feof"
+                        ]
+            , Just occ <- lookupVarEnv id_ allOccs
+            , occ < 2
+            -> True
           Case _ _ [(DataPat dcE _ _,_)]
             -> let nm = (nameOcc (dcName dcE))
                in -- Inlines WW projection that exposes internals of the BitVector types

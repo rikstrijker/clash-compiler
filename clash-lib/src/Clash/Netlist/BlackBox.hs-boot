@@ -11,7 +11,7 @@ import GHC.Stack (HasCallStack)
 import Clash.Core.Term (Term)
 import Clash.Core.Type (Type)
 import Clash.Core.Var (Id)
-import Clash.Netlist.Types (BlackBoxContext, Declaration, NetlistMonad)
+import Clash.Netlist.Types (BlackBoxContext, Declaration, NetlistMonad, RenderVoid)
 import Clash.Primitives.Types (CompiledPrimitive)
 
 extractPrimWarnOrFail
@@ -20,7 +20,9 @@ extractPrimWarnOrFail
   -> NetlistMonad CompiledPrimitive
 
 mkBlackBoxContext
-  :: Text
+  :: RenderVoid
+  -- ^ What to do with expressions of type "Void"
+  -> Text
   -- ^ Blackbox function name
   -> Id
   -- ^ Identifier binding the primitive/blackbox application

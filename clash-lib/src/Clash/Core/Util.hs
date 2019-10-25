@@ -954,7 +954,10 @@ shouldSplit
   -- > Just ((,) @Int @(Clock, Bool), [Int, (Clock, Bool)])
   --
   -- An outer loop is required to subsequently split the /(Clock, Bool)/ tuple.
-shouldSplit tcm = shouldSplit0 tcm . tyView . coreView tcm
+shouldSplit tcm (tyView ->  TyConApp (nameOcc -> "Clash.Explicit.SimIO.SimIO") [tyArg]) =
+  -- We also look through `SimIO` to find things like Files
+  shouldSplit tcm tyArg
+shouldSplit tcm ty = shouldSplit0 tcm (tyView (coreView tcm ty))
 
 -- | Worker of 'shouldSplit', works on 'TypeView' instead of 'Type'
 shouldSplit0
@@ -976,6 +979,11 @@ shouldSplit0 tcm (TyConApp tcNm tyArgs)
     = nameOcc tcNm0 `elem` [ "Clash.Signal.Internal.Clock"
                            , "Clash.Signal.Internal.Reset"
                            , "Clash.Signal.Internal.Enable"
+                           -- iverilog doesn't like it when we put file handles
+                           -- in a bitvector, so we need to make sure Clash
+                           -- splits them off
+                           , "Clash.Explicit.SimIO.File"
+                           , "GHC.IO.Handle.Types.Handle"
                            ]
   splitTy _ = False
 

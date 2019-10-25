@@ -495,6 +495,7 @@ representableType builtInTranslation reprs stringRepresentable m =
 typeSize :: HWType
          -> Int
 typeSize (Void {}) = 0
+typeSize FileType = 32
 typeSize String = 0
 typeSize Integer = 0
 typeSize (KnownDomain {}) = 0
@@ -706,7 +707,7 @@ setBinderName resN res2 (i,collectArgsTicks -> (k,args,ticks)) = case k of
   _ -> return goDef
  where
   go nm (BlackBox {resultName = Just (BBTemplate nmD)}) = withTicks ticks $ \_ -> do
-    (bbCtx,_) <- preserveVarEnv (mkBlackBoxContext nm goDef args)
+    (bbCtx,_) <- preserveVarEnv (mkBlackBoxContext VoidElide nm goDef args)
     be <- Lens.use backend
     let q = case be of
               SomeBackend s -> toStrict ((State.evalState (renderTemplate bbCtx nmD) s) 0)

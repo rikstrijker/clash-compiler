@@ -1,0 +1,72 @@
+[ { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.mealyIO"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.display"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.finish"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.reg"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.readReg"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.writeReg"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.openFile"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.fgetc"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.feof"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.fmapSimIO#"
+    , "primType" : "Function"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.pureSimIO#"
+    , "kind"     : "Declaration"
+    , "template" : "~IF~SIZE[~TYP[0]]~THEN~RESULT = ~ARG[0];~ELSE~FI"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.apSimIO#"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.bindSimIO#"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.unSimIO#"
+    , "primType" : "Function"
+    }
+  }
+]

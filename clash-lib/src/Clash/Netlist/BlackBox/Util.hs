@@ -995,6 +995,7 @@ usedVariables (DataTag _ e')    = [either id id e']
 usedVariables (Literal {})      = []
 usedVariables (ConvBV _ _ _ e') = usedVariables e'
 usedVariables (IfThenElse e1 e2 e3) = concatMap usedVariables [e1,e2,e3]
+usedVariables Noop = []
 usedVariables (BlackBoxE _ _ _ _ t bb _) = nub (sList ++ sList')
   where
     matchArg (Arg _ i) = Just i

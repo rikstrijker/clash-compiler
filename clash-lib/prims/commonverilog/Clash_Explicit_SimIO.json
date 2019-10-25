@@ -1,0 +1,80 @@
+[ { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.mealyIO"
+    , "primType" : "Function"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.display"
+    , "kind"     : "Declaration"
+    , "template" : "$display(~ARG[0]);"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.finish"
+    , "kind"     : "Declaration"
+    , "template" : "$finish(~LIT[0]);"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.reg"
+    , "kind"     : "Expression"
+    , "template" : "~ARG[0]"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.readReg"
+    , "kind"     : "Expression"
+    , "template" : "~ARG[0]"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.writeReg"
+    , "kind"     : "Declaration"
+    , "template" : "~ARG[0] = ~ARG[1];"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.openFile"
+    , "kind"     : "Expression"
+    , "template" : "$fopen(~FILE[~LIT[0]],\"r\")"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.fgetc"
+    , "kind"     : "Expression"
+    , "template" : "$fgetc(~ARG[0])"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.feof"
+    , "kind"     : "Declaration"
+    , "template" : "~RESULT = $feof(~ARG[0]);"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.fmapSimIO#"
+    , "primType" : "Function"
+    }
+  }
+, { "BlackBox" :
+    { "name"     : "Clash.Explicit.SimIO.pureSimIO#"
+    , "kind"     : "Declaration"
+    , "template" : "~IF~SIZE[~TYP[0]]~THEN~RESULT = ~ARG[0];~ELSE~FI"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.apSimIO#"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.bindSimIO#"
+    , "primType" : "Function"
+    }
+  }
+, { "Primitive" :
+    { "name"     : "Clash.Explicit.SimIO.unSimIO#"
+    , "primType" : "Function"
+    }
+  }
+]

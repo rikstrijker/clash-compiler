@@ -15,6 +15,7 @@
 {-# LANGUAGE DeriveLift                 #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TemplateHaskell            #-}
@@ -56,7 +57,7 @@ import SrcLoc                               (SrcSpan)
 import Clash.Annotations.TopEntity          (TopEntity)
 import Clash.Backend                        (Backend)
 import Clash.Core.Type                      (Type)
-import Clash.Core.Var                       (Attr')
+import Clash.Core.Var                       (Attr', Id, varType)
 import Clash.Core.TyCon                     (TyConMap)
 import Clash.Core.VarEnv                    (VarEnv)
 import Clash.Driver.Types                   (BindingMap, ClashOpts)
@@ -220,6 +221,8 @@ data HWType
   -- ^ Annotated with HDL attributes
   | KnownDomain !Identifier !Integer !ActiveEdge !ResetKind !InitBehavior !ResetPolarity
   -- ^ Domain name, period, active edge, reset kind, initial value behavior
+  | FileType
+  -- ^ File type
   deriving (Eq, Ord, Show, Generic, NFData, Hashable)
 
 -- | Extract hardware attributes from Annotated. Returns an empty list if
@@ -271,6 +274,28 @@ data Declaration
       -- ^ Signal declaration
   | TickDecl Comment
   -- ^ HDL tick corresponding to a Core tick
+  -- | Sequential statement
+  | Seq [Seq]
+  deriving Show
+
+-- | Sequential statements
+data Seq
+  -- | Clocked sequential statements
+  = AlwaysClocked
+      ActiveEdge -- FIELD Edge of the clock the statement should be executed
+      Expr       -- FIELD Clock expression
+      [Seq]      -- FIELD Statements to be executed on the active clock edge
+  -- | Statements running at simulator start
+  | Initial
+      [Seq] -- FIELD Statements to run at simulator start
+  -- | Declaration in sequential form
+  | SeqDecl
+      Declaration -- FIELD The declaration
+  -- | Branching statement
+  | Branch
+      !Expr                    -- FIELD Scrutinized expresson
+      !HWType                  -- FIELD Type of the scrutinized expression
+      [(Maybe Literal,[Seq])]  -- FIELD List of: (Maybe match, RHS of Alternative)
   deriving Show
 
 data EntityOrComponent = Entity | Comp | Empty
@@ -327,6 +352,8 @@ data Expr
       !Bool                    -- FIELD Wrap in paretheses?
   | ConvBV     (Maybe Identifier) HWType Bool Expr
   | IfThenElse Expr Expr Expr
+  -- | Do nothing
+  | Noop
   deriving Show
 
 -- | Literals used in an expression
@@ -414,6 +441,59 @@ instance Binary TemplateFunction where
   put (TemplateFunction is _ _ ) = put is
   get = (\is -> TemplateFunction is err err) <$> get
     where err = const $ error "TemplateFunction functions can't be preserved by serialisation"
+
+-- | Netlist-level identifier
+data NetlistId
+  = NetlistId Identifier Type
+  -- ^ Identifier generated in the NetlistMonad, always derived from another
+  -- 'NetlistId'
+  | CoreId Id
+  -- ^ An original Core identifier
+  | MultiId [NetlistId]
+  -- ^ A split identifier (into several sub-identifiers), needed to assign
+  -- expressions of types that have to be split apart (e.g. tuples of Files)
+  deriving Show
+
+netlistId
+  :: (Identifier -> r)
+  -> (Id -> r)
+  -> NetlistId
+  -> [r]
+netlistId f g = \case
+  NetlistId i _ -> [f i]
+  CoreId i      -> [g i]
+  MultiId is    -> concatMap (netlistId f g) is
+
+netlistId1
+  :: (Identifier -> r)
+  -> (Id -> r)
+  -> NetlistId
+  -> r
+netlistId1 _ _ MultiId {} = error "netlistId1"
+netlistId1 f g i          = head (netlistId f g i)
+
+netlistTypes
+  :: NetlistId
+  -> [Type]
+netlistTypes = \case
+  NetlistId _ t -> [t]
+  CoreId i      -> [varType i]
+  MultiId is    -> concatMap netlistTypes is
+
+netlistTypes1
+  :: NetlistId
+  -> Type
+netlistTypes1 MultiId {} = error "netlistTypes1"
+netlistTypes1 i          = head (netlistTypes i)
+
+-- | What to do with expressions of type "Void"
+data RenderVoid
+  = VoidElide
+  -- ^ Completely elide them from the HDL
+  | VoidNoop
+  -- ^ Render them to something that's basically a NOOP
+  --
+  -- This is needed for I/O action which are often of type "IO ()"
 
 emptyBBContext :: Text -> BlackBoxContext
 emptyBBContext n
