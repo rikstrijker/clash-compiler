@@ -269,8 +269,12 @@ data Declaration
       (Either Identifier HWType) -- FIELD Pointer to type of signal or type of signal
       (Maybe Expr)               -- FIELD Initial value
       -- ^ Signal declaration
+
+  -- | HDL comment
+  | CommentDecl Comment
+
+  -- | HDL tick corresponding to a Core tick
   | TickDecl Comment
-  -- ^ HDL tick corresponding to a Core tick
   deriving Show
 
 data EntityOrComponent = Entity | Comp | Empty

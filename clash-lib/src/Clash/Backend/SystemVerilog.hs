@@ -857,6 +857,8 @@ inst_' id_ scrut scrutTy es = fmap Just $
 
 -- | Turn a Netlist Declaration to a SystemVerilog concurrent block
 inst_ :: Declaration -> SystemVerilogM (Maybe Doc)
+inst_ (CommentDecl (TextS.splitOn "\n" -> commentLines)) =
+  fmap Just $ vsep $ sequence $ ["//" <+> pretty l | l <- commentLines]
 inst_ (TickDecl {}) = return Nothing
 
 inst_ (Assignment id_ e) = fmap Just $
