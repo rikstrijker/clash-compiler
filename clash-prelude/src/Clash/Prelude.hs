@@ -263,11 +263,16 @@ windowD
 windowD = hideClockResetEnable E.windowD
 {-# INLINE windowD #-}
 
-
-autoReg :: (HiddenClockResetEnable dom, AutoReg a)
-                => a -> Signal dom a -> Signal dom a
+autoReg
+  :: (HiddenClockResetEnable dom, AutoReg a)
+  => a
+  -> Signal dom a
+  -> Signal dom a
 autoReg = hideClockResetEnable E.autoReg
 
-autoReg1 :: (HiddenClockResetEnable dom, AutoReg a)
-                => a -> Signal dom a -> Signal dom a
+autoReg1
+  :: (HiddenClockResetEnable dom, AutoReg a)
+  => a
+  -> Signal dom a
+  -> Signal dom a
 autoReg1 = hideClockResetEnable E.autoReg1
